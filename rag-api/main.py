@@ -10,6 +10,9 @@ dotenv_path = os.path.join(base_dir, ".env")
 load_dotenv(dotenv_path=dotenv_path)
 
 app = FastAPI(title="Hybrid Multi-Domain RAG Search Engine")
+@app.get("/")
+async def root_check():
+    return {"status": "healthy", "message": "Hybrid Multi-Domain RAG Search Engine is running!"}
 
 # Gemini Cloud API Client initialization
 ai = genai.Client()
