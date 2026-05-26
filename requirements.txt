@@ -4,3 +4,4 @@ qdrant-client
 google-genai
 requests
 python-dotenv
+streamlit

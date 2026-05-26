@@ -3,7 +3,7 @@ import requests
 
 st.set_page_config(page_title="Universal AI Live Assistant", page_icon="🤖", layout="centered")
 
-st.title("🧠 Real-Time AI Search Portal")
+st.title("🧠 Real-Time RAG Search Engine")
 st.markdown("---")
 
 # Dropdown select framework feature
@@ -24,8 +24,8 @@ if st.button("Query Pipeline", type="primary"):
         with st.spinner("Executing real-time semantic retrieval handshake..."):
             try:
                 response = requests.get(
-                    f"http://localhost:8001/search",
-                    params={"query": user_query, "domain": domain_key}
+                "https://real-time-rag-engine.onrender.com/search",
+                params={"query": user_query, "domain": domain_key}
                 )
                 
                 if response.status_code == 200:
