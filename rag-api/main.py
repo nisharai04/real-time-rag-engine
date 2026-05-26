@@ -45,10 +45,12 @@ async def hybrid_rag_search(
 
         # 1. 🌟 LIGHTWEIGHT CLOUD EMBEDDING: Using Gemini API to generate vector vectors
         # This replaces the heavy local sentence_transformers model completely!
+        #  Isse replace kar do:
         embedding_response = ai.models.embed_content(
-            model="text-embedding-004",
+            model="models/text-embedding-004",
             contents=query,
         )
+        
         query_vector = embedding_response.embeddings[0].values
 
         # 2. Direct REST HTTP API call to Qdrant Cloud
