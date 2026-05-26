@@ -3,7 +3,6 @@ import requests
 from fastapi import FastAPI, Query
 from dotenv import load_dotenv
 from google import genai
-from sentence_transformers import SentenceTransformer
 
 # Dynamically locate the .env file in the parent directory
 base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -12,9 +11,7 @@ load_dotenv(dotenv_path=dotenv_path)
 
 app = FastAPI(title="Hybrid Multi-Domain RAG Search Engine")
 
-# Local standard text embedder model
-model = SentenceTransformer("sentence-transformers/all-MiniLM-L6-v2")
-
+# Gemini Cloud API Client initialization
 ai = genai.Client()
 
 @app.get("/search")
@@ -43,10 +40,15 @@ async def hybrid_rag_search(
                 "Do not copy-paste raw database values; behave like an expert human retail specialist."
             )
 
-        # 1. Standard vector extraction via our safe local model layer
-        query_vector = model.encode(query).tolist()
+        # 1. 🌟 LIGHTWEIGHT CLOUD EMBEDDING: Using Gemini API to generate vector vectors
+        # This replaces the heavy local sentence_transformers model completely!
+        embedding_response = ai.models.embed_content(
+            model="text-embedding-004",
+            contents=query,
+        )
+        query_vector = embedding_response.embeddings[0].values
 
-        # 2. Direct REST HTTP API call bypassing the broken qdrant-client wrapper completely!
+        # 2. Direct REST HTTP API call to Qdrant Cloud
         qdrant_host = os.getenv("QDRANT_HOST").rstrip("/")
         qdrant_api_key = os.getenv("QDRANT_API_KEY")
         
