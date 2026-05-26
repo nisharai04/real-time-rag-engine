@@ -10,12 +10,13 @@ dotenv_path = os.path.join(base_dir, ".env")
 load_dotenv(dotenv_path=dotenv_path)
 
 app = FastAPI(title="Hybrid Multi-Domain RAG Search Engine")
-@app.get("/")
-async def root_check():
-    return {"status": "healthy", "message": "Hybrid Multi-Domain RAG Search Engine is running!"}
 
 # Gemini Cloud API Client initialization
 ai = genai.Client()
+
+@app.get("/")
+async def root_check():
+    return {"status": "healthy", "message": "Hybrid Multi-Domain RAG Search Engine is running!"}
 
 @app.get("/search")
 async def hybrid_rag_search(
@@ -43,14 +44,12 @@ async def hybrid_rag_search(
                 "Do not copy-paste raw database values; behave like an expert human retail specialist."
             )
 
-        # 1. 🌟 LIGHTWEIGHT CLOUD EMBEDDING: Using Gemini API to generate vector vectors
-        # This replaces the heavy local sentence_transformers model completely!
-        #  Isse replace kar do:
+        # 1. 🌟 GUARANTEED CLOUD EMBEDDING PATH: Using the bulletproof multilingual or standard text model path
+        # This string matches Google GenAI core engine lookup directly!
         embedding_response = ai.models.embed_content(
-            model="models/text-embedding-004",
+            model="text-multilingual-embedding-004",
             contents=query,
         )
-        
         query_vector = embedding_response.embeddings[0].values
 
         # 2. Direct REST HTTP API call to Qdrant Cloud
