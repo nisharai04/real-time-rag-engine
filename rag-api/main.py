@@ -27,7 +27,7 @@ async def hybrid_rag_search(
     query_vector = None
     gemini_key = os.getenv("GEMINI_API_KEY")
     
-    # 🌟 1. MIND-MAP EXCEPTION HANDLING FOR EMBEDDING CAPTURE
+    # 🌟 1. SAFE EMBEDDING CAPTURE
     try:
         embed_url = f"https://generativelanguage.googleapis.com/v1/models/text-embedding-004:embedContent?key={gemini_key}"
         embed_payload = {
@@ -39,30 +39,28 @@ async def hybrid_rag_search(
         
         if embed_res.status_code == 200:
             res_json = embed_res.json()
-            # Catching singular formats safely
             if "embedding" in res_json and isinstance(res_json["embedding"], dict):
                 query_vector = res_json["embedding"].get("values")
-            # Catching plural array formats safely
             elif "embeddings" in res_json and isinstance(res_json["embeddings"], list) and len(res_json["embeddings"]) > 0:
                 query_vector = res_json["embeddings"][0].get("values")
         
-        # If primary production endpoint failed or key didn't parse, try fallback v1beta path safely
+        # 🌟 FIXED SYNTAX ERROR HERE: Cleaned dictionary get syntax
         if not query_vector:
             fallback_url = f"https://generativelanguage.googleapis.com/v1beta/models/text-embedding-004:embedContent?key={gemini_key}"
             fb_res = requests.post(fallback_url, json=embed_payload, headers={"Content-Type": "application/json"})
             if fb_res.status_code == 200:
                 fb_json = fb_res.json()
                 if "embedding" in fb_json and isinstance(fb_json["embedding"], dict):
-                    query_vector = fb_json["embedding"].get("values"]
+                    query_vector = fb_json["embedding"].get("values")
                 elif "embeddings" in fb_json and isinstance(fb_json["embeddings"], list) and len(fb_json["embeddings"]) > 0:
                     query_vector = fb_json["embeddings"][0].get("values")
 
     except Exception as embed_err:
         print(f"⚠️ Internal Vector Engine Handshake log: {str(embed_err)}")
 
-    # 🛑 CRITICAL LOOP BREAK: If Google completely blocks or sends rubbish, execute instant local mathematical safety vector
+    # 🛑 FALLBACK CORE: Safe local generation if everything drops
     if not query_vector:
-        print("🚀 Executing local fallback deterministic vector generation to prevent KeyErrors!")
+        print("🚀 Executing local fallback deterministic vector generation!")
         words = query.lower().split()
         hash_vector = [0.0] * 1536
         for i, word in enumerate(words[:1536]):
