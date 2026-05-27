@@ -21,53 +21,11 @@ async def hybrid_rag_search(
     query: str = Query(..., description="User query text"),
     domain: str = Query("products", description="Domain to search inside")
 ):
-    print(f"🔍 Executing Bulletproof Search for '{domain}': '{query}'")
+    print(f"🔍 Executing HuggingFace Match Search for '{domain}': '{query}'")
     
     context_chunks = []
     query_vector = None
-    gemini_key = os.getenv("GEMINI_API_KEY")
     
-    # 🌟 1. SAFE EMBEDDING CAPTURE
-    try:
-        embed_url = f"https://generativelanguage.googleapis.com/v1/models/text-embedding-004:embedContent?key={gemini_key}"
-        embed_payload = {
-            "model": "models/text-embedding-004",
-            "content": {"parts": [{"text": query}]}
-        }
-        
-        embed_res = requests.post(embed_url, json=embed_payload, headers={"Content-Type": "application/json"})
-        
-        if embed_res.status_code == 200:
-            res_json = embed_res.json()
-            if "embedding" in res_json and isinstance(res_json["embedding"], dict):
-                query_vector = res_json["embedding"].get("values")
-            elif "embeddings" in res_json and isinstance(res_json["embeddings"], list) and len(res_json["embeddings"]) > 0:
-                query_vector = res_json["embeddings"][0].get("values")
-        
-        # 🌟 FIXED SYNTAX ERROR HERE: Cleaned dictionary get syntax
-        if not query_vector:
-            fallback_url = f"https://generativelanguage.googleapis.com/v1beta/models/text-embedding-004:embedContent?key={gemini_key}"
-            fb_res = requests.post(fallback_url, json=embed_payload, headers={"Content-Type": "application/json"})
-            if fb_res.status_code == 200:
-                fb_json = fb_res.json()
-                if "embedding" in fb_json and isinstance(fb_json["embedding"], dict):
-                    query_vector = fb_json["embedding"].get("values")
-                elif "embeddings" in fb_json and isinstance(fb_json["embeddings"], list) and len(fb_json["embeddings"]) > 0:
-                    query_vector = fb_json["embeddings"][0].get("values")
-
-    except Exception as embed_err:
-        print(f"⚠️ Internal Vector Engine Handshake log: {str(embed_err)}")
-
-    # 🛑 FALLBACK CORE: Safe local generation if everything drops
-    if not query_vector:
-        print("🚀 Executing local fallback deterministic vector generation!")
-        words = query.lower().split()
-        hash_vector = [0.0] * 1536
-        for i, word in enumerate(words[:1536]):
-            hash_vector[i] = sum(ord(c) for c in word) / 1000.0
-        query_vector = hash_vector
-
-    # 🌟 2. Direct API call to Qdrant Cloud
     try:
         if domain == "news":
             collection_name = "global_breaking_news"
@@ -84,6 +42,32 @@ async def hybrid_rag_search(
                 "Greet the user naturally based on the exact time provided."
             )
 
+        # 🌟 1. HUGGINGFACE REST CALL - EXACT SAME 384 MODEL USED IN WORKER.PY
+        hf_url = "https://api-inference.huggingface.co/models/sentence-transformers/all-MiniLM-L6-v2"
+        headers = {"Content-Type": "application/json"}
+        payload = {"inputs": query}
+        
+        hf_res = requests.post(hf_url, json=payload, headers=headers)
+        
+        if hf_res.status_code == 200:
+            # Explicitly match the 384 dimensional output vector
+            query_vector = hf_res.json()
+            print(f"✅ Embedding dimensions generated: {len(query_vector)}")
+
+    except Exception as embed_err:
+        print(f"⚠️ Vector Engine Error: {str(embed_err)}")
+
+    # 🛑 Emergency Fallback if API drops (Generates exact 384 padded array)
+    if not query_vector or not isinstance(query_vector, list):
+        print("🚀 Local Fallback matching 384 dimension space active")
+        words = query.lower().split()
+        hash_vector = [0.0] * 384
+        for i, word in enumerate(words[:384]):
+            hash_vector[i] = sum(ord(c) for c in word) / 1000.0
+        query_vector = hash_vector
+
+    # 🌟 2. Direct API call to Qdrant Cloud (Now querying exact 384 size matrix)
+    try:
         qdrant_host = os.getenv("QDRANT_HOST").rstrip("/")
         qdrant_api_key = os.getenv("QDRANT_API_KEY")
         
@@ -114,6 +98,7 @@ async def hybrid_rag_search(
         current_time_ist = datetime.now(india_tz).strftime("%I:%M %p on %A, %B %d, %Y")
 
         # 🌟 4. Final Generation REST Request
+        gemini_key = os.getenv("GEMINI_API_KEY")
         gen_url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={gemini_key}"
         system_prompt = (
             f"{system_instruction}\n\n"
@@ -125,11 +110,7 @@ async def hybrid_rag_search(
         
         gen_payload = {"contents": [{"parts": [{"text": system_prompt}]}]}
         gen_res = requests.post(gen_url, json=gen_payload, headers={"Content-Type": "application/json"})
-        
-        if gen_res.status_code == 200:
-            ai_answer = gen_res.json()["candidates"][0]["content"]["parts"][0]["text"].strip()
-        else:
-            ai_answer = f"Gemini Text Generation Layer Error: {gen_res.text}"
+        ai_answer = gen_res.json()["candidates"][0]["content"]["parts"][0]["text"].strip()
             
     except Exception as e:
         ai_answer = f"Production System Handshake Exception: {str(e)}"
