@@ -185,7 +185,8 @@ async def hybrid_rag_search(
         "ai_response": ai_answer
     }
 
-if __name__ == "__main__":
+iif __name__ == "__main__":
     import uvicorn
-    port = int(os.getenv("PORT", 8001))
+    # Render binds standard web services to port 10000 by default
+    port = int(os.getenv("PORT", 10000))
     uvicorn.run(app, host="0.0.0.0", port=port)
