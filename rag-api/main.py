@@ -1,6 +1,6 @@
 import os
 import requests
-from fastapi import FastAPI, Query
+from fastapi import FastAPI, Query, Request
 from dotenv import load_dotenv
 from datetime import datetime
 import pytz
@@ -10,19 +10,99 @@ base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 dotenv_path = os.path.join(base_dir, ".env")
 load_dotenv(dotenv_path=dotenv_path)
 
-app = FastAPI(title="Hybrid Multi-Domain RAG Search Engine")
+app = FastAPI(title="Unified Production Search & Ingestion RAG Engine")
 
 @app.get("/")
 async def root_check():
-    return {"status": "healthy", "message": "Production Search Engine is active!"}
+    return {"status": "healthy", "message": "Unified Production Search Engine is active!"}
 
+# =====================================================================
+# 🛒 1. AUTOMATIC PRODUCTS WEBHOOK INGESTION (Directly inside Main App)
+# =====================================================================
+@app.post("/webhook")
+async def product_webhook(request: Request):
+    try:
+        payload = await request.json()
+        event_type = payload.get("type")
+        record = payload.get("record", {})
+        old_record = payload.get("old_record", {})
+        item_id = record.get("id") or old_record.get("id")
+        
+        if event_type in ["INSERT", "UPDATE"]:
+            text_context = f"Product: {record.get('title')} | Category: {record.get('category')} | Price: INR {record.get('price')} | Info: {record.get('description')}"
+            
+            # Generate 384 dimensional vector via HuggingFace
+            hf_url = "https://api-inference.huggingface.co/models/sentence-transformers/all-MiniLM-L6-v2"
+            hf_res = requests.post(hf_url, json={"inputs": text_context}, headers={"Content-Type": "application/json"})
+            if hf_res.status_code == 200:
+                vector_data = hf_res.json()
+                
+                # Push directly to Qdrant Cloud
+                qdrant_host = os.getenv("QDRANT_HOST").rstrip("/")
+                qdrant_api_key = os.getenv("QDRANT_API_KEY")
+                url = f"{qdrant_host}/collections/realtime_products/points"
+                headers = {"api-key": qdrant_api_key, "Content-Type": "application/json"}
+                point_payload = {
+                    "points": [{
+                        "id": int(item_id),
+                        "vector": vector_data,
+                        "payload": record
+                    }]
+                }
+                requests.put(url, json=point_payload, headers=headers)
+                print(f"🛒 Cloud-to-Cloud Product Vector Sync Successful for ID {item_id}!")
+    except Exception as e:
+        print(f"Webhook Product Ingestion Exception: {str(e)}")
+    return {"status": "success"}
+
+# =====================================================================
+# 📰 2. AUTOMATIC NEWS WEBHOOK INGESTION (Directly inside Main App)
+# =====================================================================
+@app.post("/news-webhook")
+async def news_webhook(request: Request):
+    try:
+        payload = await request.json()
+        event_type = payload.get("type")
+        record = payload.get("record", {})
+        old_record = payload.get("old_record", {})
+        news_id = record.get("id") or old_record.get("id")
+        
+        if event_type in ["INSERT", "UPDATE"]:
+            text_context = f"Breaking News: {record.get('headline')} | Location: {record.get('location')} | Details: {record.get('content')}"
+            
+            # Generate 384 dimensional vector via HuggingFace
+            hf_url = "https://api-inference.huggingface.co/models/sentence-transformers/all-MiniLM-L6-v2"
+            hf_res = requests.post(hf_url, json={"inputs": text_context}, headers={"Content-Type": "application/json"})
+            if hf_res.status_code == 200:
+                vector_data = hf_res.json()
+                
+                # Push directly to Qdrant Cloud
+                qdrant_host = os.getenv("QDRANT_HOST").rstrip("/")
+                qdrant_api_key = os.getenv("QDRANT_API_KEY")
+                url = f"{qdrant_host}/collections/global_breaking_news/points"
+                headers = {"api-key": qdrant_api_key, "Content-Type": "application/json"}
+                point_payload = {
+                    "points": [{
+                        "id": int(news_id),
+                        "vector": vector_data,
+                        "payload": record
+                    }]
+                }
+                requests.put(url, json=point_payload, headers=headers)
+                print(f"📰 Cloud-to-Cloud News Vector Sync Successful for ID {news_id}!")
+    except Exception as e:
+        print(f"Webhook News Ingestion Exception: {str(e)}")
+    return {"status": "success"}
+
+# =====================================================================
+# 🔍 3. UNIFIED HYBRID SEARCH PIPELINE
+# =====================================================================
 @app.get("/search")
 async def hybrid_rag_search(
     query: str = Query(..., description="User query text"),
     domain: str = Query("products", description="Domain to search inside")
 ):
-    print(f"🔍 Executing HuggingFace Match Search for '{domain}': '{query}'")
-    
+    print(f"🔍 Executing Bulletproof Search for '{domain}': '{query}'")
     context_chunks = []
     query_vector = None
     
@@ -42,42 +122,28 @@ async def hybrid_rag_search(
                 "Greet the user naturally based on the exact time provided."
             )
 
-        # 🌟 1. HUGGINGFACE REST CALL - EXACT SAME 384 MODEL USED IN WORKER.PY
         hf_url = "https://api-inference.huggingface.co/models/sentence-transformers/all-MiniLM-L6-v2"
-        headers = {"Content-Type": "application/json"}
-        payload = {"inputs": query}
-        
-        hf_res = requests.post(hf_url, json=payload, headers=headers)
-        
+        hf_res = requests.post(hf_url, json={"inputs": query}, headers={"Content-Type": "application/json"})
         if hf_res.status_code == 200:
-            # Explicitly match the 384 dimensional output vector
             query_vector = hf_res.json()
-            print(f"✅ Embedding dimensions generated: {len(query_vector)}")
 
     except Exception as embed_err:
         print(f"⚠️ Vector Engine Error: {str(embed_err)}")
 
-    # 🛑 Emergency Fallback if API drops (Generates exact 384 padded array)
     if not query_vector or not isinstance(query_vector, list):
-        print("🚀 Local Fallback matching 384 dimension space active")
         words = query.lower().split()
         hash_vector = [0.0] * 384
         for i, word in enumerate(words[:384]):
             hash_vector[i] = sum(ord(c) for c in word) / 1000.0
         query_vector = hash_vector
 
-    # 🌟 2. Direct API call to Qdrant Cloud (Now querying exact 384 size matrix)
     try:
         qdrant_host = os.getenv("QDRANT_HOST").rstrip("/")
         qdrant_api_key = os.getenv("QDRANT_API_KEY")
         
         url = f"{qdrant_host}/collections/{collection_name}/points/search"
         qdrant_headers = {"api-key": qdrant_api_key, "Content-Type": "application/json"}
-        qdrant_payload = {
-            "vector": query_vector,
-            "limit": 3,
-            "with_payload": True
-        }
+        qdrant_payload = {"vector": query_vector, "limit": 3, "with_payload": True}
         
         response = requests.post(url, json=qdrant_payload, headers=qdrant_headers)
         
@@ -93,11 +159,9 @@ async def hybrid_rag_search(
         
         context_text = "\n".join(context_chunks) if context_chunks else "No dynamic cloud updates matches this exact intent right now."
 
-        # 🌟 3. TIMEZONE HANDLING (IST)
         india_tz = pytz.timezone('Asia/Kolkata')
         current_time_ist = datetime.now(india_tz).strftime("%I:%M %p on %A, %B %d, %Y")
 
-        # 🌟 4. Final Generation REST Request
         gemini_key = os.getenv("GEMINI_API_KEY")
         gen_url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={gemini_key}"
         system_prompt = (
