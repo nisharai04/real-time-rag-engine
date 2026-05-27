@@ -43,7 +43,7 @@ async def hybrid_rag_search(
                 "Do not copy-paste raw database values; behave like an expert human retail specialist."
             )
 
-        # 1. 🚀 BULLETPROOF HTTP REST EMBEDDING CALL (No SDK routing issues!)
+# 1. 🚀 BULLETPROOF HTTP REST EMBEDDING CALL
         gemini_key = os.getenv("GEMINI_API_KEY")
         embed_url = f"https://generativelanguage.googleapis.com/v1beta/models/text-embedding-004:embedContent?key={gemini_key}"
         
@@ -53,14 +53,22 @@ async def hybrid_rag_search(
         }
         
         embed_res = requests.post(embed_url, json=embed_payload, headers={"Content-Type": "application/json"})
+        res_json = embed_res.json()
         
-        if embed_res.status_code == 200:
-            query_vector = embed_res.json()["embedding"]["values"]
+        # Robust dictionary parser to handle different Google API response structures smoothly
+        if "embedding" in res_json:
+            query_vector = res_json["embedding"]["values"]
+        elif "embeddings" in res_json:
+            query_vector = res_json["embeddings"][0]["values"]
         else:
-            # Fallback to standard v1 endpoint if v1beta throws tantrums on Render
+            # Fallback to standard production endpoint if v1beta returns a different nested structure
             alt_url = f"https://generativelanguage.googleapis.com/v1/models/text-embedding-004:embedContent?key={gemini_key}"
-            embed_res = requests.post(alt_url, json=embed_payload, headers={"Content-Type": "application/json"})
-            query_vector = embed_res.json()["embedding"]["values"]
+            alt_res = requests.post(alt_url, json=embed_payload, headers={"Content-Type": "application/json"})
+            alt_json = alt_res.json()
+            if "embedding" in alt_json:
+                query_vector = alt_json["embedding"]["values"]
+            else:
+                query_vector = alt_json["embeddings"][0]["values"]
 
         # 2. Direct REST HTTP API call to Qdrant Cloud
         qdrant_host = os.getenv("QDRANT_HOST").rstrip("/")
