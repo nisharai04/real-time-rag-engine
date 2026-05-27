@@ -185,7 +185,7 @@ async def hybrid_rag_search(
         "ai_response": ai_answer
     }
 
-iif __name__ == "__main__":
+if __name__ == "__main__":
     import uvicorn
     # Render binds standard web services to port 10000 by default
     port = int(os.getenv("PORT", 10000))
