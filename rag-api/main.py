@@ -43,7 +43,7 @@ async def hybrid_rag_search(
                 "Do not copy-paste raw database values; behave like an expert human retail specialist."
             )
 
-# 1. 🚀 BULLETPROOF HTTP REST EMBEDDING CALL
+        # 1. 🚀 DIRECT REST EMBEDDING CALL WITH AUTO-FALLBACK
         gemini_key = os.getenv("GEMINI_API_KEY")
         embed_url = f"https://generativelanguage.googleapis.com/v1beta/models/text-embedding-004:embedContent?key={gemini_key}"
         
@@ -55,20 +55,30 @@ async def hybrid_rag_search(
         embed_res = requests.post(embed_url, json=embed_payload, headers={"Content-Type": "application/json"})
         res_json = embed_res.json()
         
-        # Robust dictionary parser to handle different Google API response structures smoothly
-        if "embedding" in res_json:
+        # 🌟 ULTRA-ROBUST PARSER: No matter what key Google sends, we catch it!
+        query_vector = None
+        
+        if "embedding" in res_json and "values" in res_json["embedding"]:
             query_vector = res_json["embedding"]["values"]
         elif "embeddings" in res_json:
             query_vector = res_json["embeddings"][0]["values"]
-        else:
-            # Fallback to standard production endpoint if v1beta returns a different nested structure
+        elif "values" in res_json:
+            query_vector = res_json["values"]
+            
+        # If still not found, try the stable v1 API path
+        if not query_vector:
             alt_url = f"https://generativelanguage.googleapis.com/v1/models/text-embedding-004:embedContent?key={gemini_key}"
             alt_res = requests.post(alt_url, json=embed_payload, headers={"Content-Type": "application/json"})
             alt_json = alt_res.json()
+            
             if "embedding" in alt_json:
                 query_vector = alt_json["embedding"]["values"]
-            else:
+            elif "embeddings" in alt_json:
                 query_vector = alt_json["embeddings"][0]["values"]
+                
+        # 🚨 IF GOOGLE IS SENDING SOMETHING TOTALLY WEIRD, SHOW IT ON SCREEN!
+        if not query_vector:
+            raise KeyError(f"Google Response Keys Mismatch. Received JSON structure: {str(res_json)}")
 
         # 2. Direct REST HTTP API call to Qdrant Cloud
         qdrant_host = os.getenv("QDRANT_HOST").rstrip("/")
@@ -93,8 +103,6 @@ async def hybrid_rag_search(
                         context_chunks.append(f"Headline: {p.get('headline')} | Location: {p.get('location')} | Update: {p.get('content')}")
                     else:
                         context_chunks.append(f"Product: {p.get('title')} | Category: {p.get('category')} | Price: INR {p.get('price')} | Info: {p.get('description')}")
-        else:
-            print(f"⚠️ Qdrant REST Error: {response.text}")
         
         context_text = "\n".join(context_chunks) if context_chunks else "No dynamic cloud updates matches this exact intent right now."
 
