@@ -50,6 +50,6 @@ if st.button("Query Pipeline", type="primary"):
                     st.markdown("### 🤖 Engine Output Answer:")
                     st.write(data.get("ai_response"))
                 else:
-                    st.error(f"Backend API Error: Status {response.status_code} - Iska matlab frontend galat raste par jaa raha hai.")
+                    st.error(f"Backend API Error: Status {response.status_code}")
             except Exception as e:
                 st.error(f"Bridge connection broken: {str(e)}")
